@@ -7,7 +7,6 @@ import {
   BarElement,
   Title,
   Tooltip,
-  Legend,
 } from "chart.js";
 
 /**
@@ -208,8 +207,7 @@ export default function Page({ dailyTotals, monthlyTotal, monthName, error }) {
         display: false,
       },
       title: {
-        display: true,
-        text: `Daglig Energiförbrukning – ${monthName.charAt(0).toUpperCase() + monthName.slice(1)}`,
+        display: false,
       },
       tooltip: {
         callbacks: {
@@ -237,13 +235,16 @@ export default function Page({ dailyTotals, monthlyTotal, monthName, error }) {
   };
 
   return (
-    <div className="flex flex-col items-center p-8">
-      <h2 className="mb-4 text-2xl font-semibold text-gray-800">
-        {`Totalt för månaden: ${monthlyTotal} kWh`}
-      </h2>
-      <div className="w-full max-w-3xl bg-gray-100 p-6 rounded-2xl shadow-md">
-        <Bar data={chartData} options={chartOptions} />
+      <div className="flex flex-col items-center p-8">
+        <div className="w-full max-w-3xl bg-gray-100 p-6 rounded-2xl shadow-md">
+          <h3 className="p-2 text-xl font-bold text-gray-800">Producerad el under månaden - {monthName}</h3>
+          <div className="flex flex-row-reverse items-center">
+            <h4 className="p-2 text-sm text-gray-700">
+              Total: {monthlyTotal} kWh
+            </h4>
+          </div>
+          <Bar data={chartData} options={chartOptions} />
+        </div>
       </div>
-    </div>
   );
 }
