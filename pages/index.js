@@ -234,13 +234,14 @@ export default function Page({ dailyTotals, monthlyTotal, monthName, error }) {
     },
   };
 
+  const formatted_monthlyTotal = new Intl.NumberFormat('sv-SE').format(monthlyTotal)
   return (
       <div className="flex flex-col items-center p-8">
         <div className="w-full max-w-3xl bg-gray-100 p-6 rounded-2xl shadow-md">
           <h3 className="p-2 text-xl font-bold text-gray-800">Producerad el under månaden - {monthName}</h3>
           <div className="flex flex-row-reverse items-center">
             <h4 className="p-2 text-sm text-gray-700">
-              Total: {monthlyTotal} kWh
+              Total: {formatted_monthlyTotal} kWh
             </h4>
           </div>
           <Bar data={chartData} options={chartOptions} />
