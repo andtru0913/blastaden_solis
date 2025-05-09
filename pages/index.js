@@ -1,115 +1,249 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+import { createHash, createHmac } from "crypto";
+import { Bar } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from "chart.js";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+/**
+ * Generates an MD5 hash of the provided body and returns it in base64 format.
+ *
+ * @param {string} body - The body content to be hashed.
+ * @returns {string} The MD5 hash of the body, encoded in base64.
+ */
+function getContentMd5(body) {
+  return createHash("md5").update(body).digest("base64");
+}
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+/**
+ * Returns the current date and time in GMT (UTC) format.
+ *
+ * @returns {string} The current date and time in UTC string format.
+ */
+function getGMTDate() {
+  return new Date().toUTCString();
+}
 
-export default function Home() {
+/**
+ * Generates a HMAC-SHA1 signature for the Solis API request.
+ * The signature is based on the provided content MD5, date, path, and secret key.
+ *
+ * @param {string} contentMd5 - The MD5 hash of the request body in base64 format.
+ * @param {string} date - The current date in GMT format.
+ * @param {string} path - The API path being requested.
+ * @param {string} secret - The secret key used to generate the HMAC signature.
+ * @returns {string} The HMAC-SHA1 signature encoded in base64.
+ */
+function getSignature(contentMd5, date, path, secret) {
+  const signatureString = `POST\n${contentMd5}\napplication/json\n${date}\n${path}`;
+  return createHmac("sha1", secret).update(signatureString).digest("base64");
+}
+
+/**
+ * Sends a POST request to the Solis API with the specified path and request body.
+ * It includes necessary headers such as Authorization, Content-MD5, Date, etc.
+ *
+ * @param {string} path - The API endpoint path (e.g., '/v1/api/userStationList').
+ * @param {Object} bodyObject - The request body to be sent with the POST request.
+ * @returns {Promise<Object>} The response body as a parsed JSON object.
+ * @throws {Error} Throws an error if the response is not OK (status code is not in the 200-299 range).
+ */
+async function sendSolisApiRequest(path, bodyObject) {
+  const url = "https://www.soliscloud.com:13333" + path;
+  const bodyString = JSON.stringify(bodyObject);
+  const contentMd5 = getContentMd5(bodyString);
+  const date = getGMTDate();
+  const signature = getSignature(
+    contentMd5,
+    date,
+    path,
+    process.env.API_SECRET,
+  );
+
+  const headers = {
+    "Content-Type": "application/json;charset=UTF-8",
+    Authorization: `API ${process.env.API_KEY}:${signature}`,
+    "Content-MD5": contentMd5,
+    Date: date,
+    Connection: "keep-alive",
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: bodyString,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorBody}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Fetches data for all user stations and aggregates energy data.
+ * It sends requests to the Solis API and accumulates daily and monthly totals.
+ *
+ * @returns {Promise<{ dailyTotals: number[], monthlyTotal: number, error: string | null }>}
+ * - dailyTotals: An array of energy totals for each day.
+ * - monthlyTotal: The total energy for the entire month.
+ * - error: A string error message if data fetching fails.
+ */
+async function fetchData() {
+  try {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const monthStr = `${year}-${month}`;
+    const daysInMonth = new Date(year, now.getMonth() + 1, 0).getDate();
+
+    const stationListResponse = await sendSolisApiRequest(
+      "/v1/api/userStationList/",
+      {
+        pageNo: 1,
+        pageSize: 100,
+      },
+    );
+
+    const dayTotals = Array(daysInMonth).fill(0);
+
+    for (const station of stationListResponse.data.page.records) {
+      const stationId = station.id;
+
+      try {
+        const response = await sendSolisApiRequest("/v1/api/stationMonth", {
+          id: stationId,
+          money: "SEK",
+          month: monthStr,
+        });
+
+        const dailyData = response.data;
+
+        for (let i = 0; i < daysInMonth; i++) {
+          const energy = dailyData[i]?.energy || 0;
+          dayTotals[i] += energy;
+        }
+      } catch (error) {
+        console.error(`Failed for station ${stationId}:`, error.message);
+      }
+    }
+
+    const roundedTotals = dayTotals.map((e) => Math.round(e * 10) / 10);
+    const monthlyTotal =
+      Math.round(dayTotals.reduce((acc, val) => acc + val, 0) * 10) / 10;
+
+    return {
+      dailyTotals: roundedTotals,
+      monthlyTotal,
+      monthName: now.toLocaleString("sv-SE", { month: "long" }),
+    };
+  } catch (error) {
+    console.error("Failed:", error.message);
+    return { error: "Failed to fetch data" };
+  }
+}
+
+/**
+ * Fetches data at build time and provides it as props to a Next.js page.
+ *
+ * @returns {Promise<Object>} An object containing:
+ *   - `props` (Object): The data to be passed to the page component:
+ *     - `dailyTotals` (Array): Daily totals,
+ *     - `monthlyTotal` (Number): Monthly total
+ *     - `error` (any): Error from fetching data
+ *   - `revalidate` (Number): Time in seconds (3600 for 1 hour) to trigger regeneration.
+ */
+export async function getStaticProps() {
+  const data = await fetchData();
+
+  return {
+    props: {
+      dailyTotals: data.dailyTotals || [],
+      monthlyTotal: data.monthlyTotal || 0,
+      monthName: data.monthName || "",
+      error: data.error || null,
+    },
+    revalidate: 3600,
+  };
+}
+
+/**
+ * Page component that receives and displays energy data passed as props.
+ *
+ * @param {Object} props - The props passed to the page component.
+ * @param {number[]} props.dailyTotals - The daily energy totals.
+ * @param {number} props.monthlyTotal - The monthly energy total.
+ * @param {string | null} props.error - An error message if the data fetching fails.
+ * @returns {JSX.Element} The JSX element to render.
+ */
+export default function Page({ dailyTotals, monthlyTotal, monthName, error }) {
+  if (error) {
+    return <div>Error: {error}</div>;
+  }
+
+  ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip);
+  const chartData = {
+    labels: dailyTotals.map((_, index) => index + 1),
+    datasets: [
+      {
+        data: dailyTotals,
+        backgroundColor: "rgba(45, 95, 149, 1)",
+        borderColor: "rgba(75, 192, 192, 1)",
+        borderWidth: 1,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        display: false,
+      },
+      title: {
+        display: true,
+        text: `Daglig Energiförbrukning – ${monthName.charAt(0).toUpperCase() + monthName.slice(1)}`,
+      },
+      tooltip: {
+        callbacks: {
+          title: (tooltipItems) => {
+            const day = tooltipItems[0].label;
+            return `${day} ${monthName.charAt(0).toUpperCase() + monthName.slice(1)}`;
+          },
+          label: (tooltipItem) => `${tooltipItem.raw} kWh`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+      },
+      y: {
+        beginAtZero: true,
+        grid: {
+          display: true,
+        },
+      },
+    },
+  };
+
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]`}
-    >
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              pages/index.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+    <div className="flex flex-col items-center p-8">
+      <h2 className="mb-4 text-2xl font-semibold text-gray-800">
+        {`Totalt för månaden: ${monthlyTotal} kWh`}
+      </h2>
+      <div className="w-full max-w-3xl bg-gray-100 p-6 rounded-2xl shadow-md">
+        <Bar data={chartData} options={chartOptions} />
+      </div>
     </div>
   );
 }
