@@ -9,8 +9,7 @@ export const handler = async (event) => {
             body: JSON.stringify({ message: 'Forbidden: Invalid secret' }),
         };
     }
-
-    const pagePath = path || '/';
+    const pagePath = '/';
 
     try {
         const response = await fetch('https://blastaden-solis.vercel.app/api/revalidate', {
