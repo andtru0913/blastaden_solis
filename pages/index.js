@@ -158,15 +158,16 @@ function formatTimeAgo(timestamp) {
   const days = Math.floor(timeDifference / 86400000);
 
   if (days > 0) {
-    return `${days} day${days > 1 ? 's' : ''} ago`;
+    return `${days} dag${days > 1 ? 'ar' : ''} sedan`;
   } else if (hours > 0) {
-    return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    return `${hours} timme${hours > 1 ? 'r' : ''} sedan`;
   } else if (minutes > 0) {
-    return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+    return `${minutes} minut${minutes > 1 ? 'er' : ''} sedan`;
   } else {
-    return 'Just now';
+    return 'Nyss';
   }
 }
+
 
 /**
  * Fetches data at build time and provides it as props to a Next.js page.
