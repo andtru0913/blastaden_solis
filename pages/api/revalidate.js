@@ -1,43 +1,20 @@
-export const handler = async (event) => {
-    const { secret } = JSON.parse(event.body);
-
-    const expectedSecret = process.env.REVALIDATE_SECRET;
-
-    if (!secret || secret !== expectedSecret) {
-        return {
-            statusCode: 403,
-            body: JSON.stringify({ message: 'Forbidden: Invalid secret' }),
-        };
+export default async function handler(req, res) {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ message: 'Method Not Allowed' });
     }
+
+    if (req.body.secret !== process.env.REVALIDATE_SECRET) {
+        return res.status(403).json({ message: 'Forbidden' });
+    }
+
     const pagePath = '/';
 
     try {
-        const response = await fetch('https://blastaden-solis.vercel.app/api/revalidate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ path: pagePath, secret: expectedSecret }),
-        });
+        await res.revalidate(pagePath);
 
-        if (!response.ok) {
-            throw new Error(`Revalidation failed with status: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        console.log('Revalidation successful:', data);
-
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ message: 'Page revalidated successfully!' }),
-        };
+        return res.json({ message: `Page revalidated successfully!` });
     } catch (error) {
-        console.error('Error during revalidation:', error);
-
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ message: 'Error revalidating the page' }),
-        };
+        console.error('Error revalidating page:', error);
+        return res.status(500).json({ message: 'Error revalidating the page' });
     }
-};
+}
