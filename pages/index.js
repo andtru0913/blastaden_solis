@@ -159,7 +159,7 @@ async function fetchData() {
  *     - `error` (any): Error from fetching data
  *   - `revalidate` (Number): Time in seconds (3600 for 1 hour) to trigger regeneration.
  */
-export async function getServerSideProps() {
+export async function getStaticProps() {
   const data = await fetchData();
 
   return {
