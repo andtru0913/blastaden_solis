@@ -149,6 +149,25 @@ async function fetchData() {
   }
 }
 
+// Helper function to format the time difference
+function formatTimeAgo(timestamp) {
+  const currentTime = Date.now();
+  const timeDifference = currentTime - timestamp;
+  const minutes = Math.floor(timeDifference / 60000);
+  const hours = Math.floor(timeDifference / 3600000);
+  const days = Math.floor(timeDifference / 86400000);
+
+  if (days > 0) {
+    return `${days} day${days > 1 ? 's' : ''} ago`;
+  } else if (hours > 0) {
+    return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  } else if (minutes > 0) {
+    return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+  } else {
+    return 'Just now';
+  }
+}
+
 /**
  * Fetches data at build time and provides it as props to a Next.js page.
  *
@@ -161,6 +180,7 @@ async function fetchData() {
  */
 export async function getStaticProps() {
   const data = await fetchData();
+  const timestamp = Date.now();
 
   return {
     props: {
@@ -168,6 +188,7 @@ export async function getStaticProps() {
       monthlyTotal: data.monthlyTotal || 0,
       monthName: data.monthName || "",
       error: data.error || null,
+      timestamp: timestamp,
     },
   };
 }
@@ -181,10 +202,13 @@ export async function getStaticProps() {
  * @param {string | null} props.error - An error message if the data fetching fails.
  * @returns {JSX.Element} The JSX element to render.
  */
-export default function Page({ dailyTotals, monthlyTotal, monthName, error }) {
+export default function Page({ dailyTotals, monthlyTotal, monthName, error, timestamp }) {
   if (error) {
     return <div>Error: {error}</div>;
   }
+
+  // Use helper function to get formatted time ago
+  const timeAgo = formatTimeAgo(timestamp);
 
   ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip);
   const chartData = {
@@ -233,7 +257,8 @@ export default function Page({ dailyTotals, monthlyTotal, monthName, error }) {
     },
   };
 
-  const formatted_monthlyTotal = new Intl.NumberFormat('sv-SE').format(monthlyTotal)
+  const formatted_monthlyTotal = new Intl.NumberFormat('sv-SE').format(monthlyTotal);
+
   return (
       <div className="flex flex-col items-center p-8">
         <div className="w-full max-w-3xl bg-gray-100 p-6 rounded-2xl shadow-md">
@@ -244,6 +269,9 @@ export default function Page({ dailyTotals, monthlyTotal, monthName, error }) {
             </h4>
           </div>
           <Bar data={chartData} options={chartOptions} />
+          <div className="text-sm text-gray-600 mt-4">
+            Senast uppdaterad: {timeAgo}
+          </div>
         </div>
       </div>
   );
