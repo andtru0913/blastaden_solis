@@ -7,9 +7,6 @@ export default async function handler(req, res) {
         return res.status(403).json({ message: 'Forbidden' });
     }
 
-    res.status(202).json({ message: 'Revalidation started' });
-
-
     const pagePath = '/';
 
     try {

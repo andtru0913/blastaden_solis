@@ -160,7 +160,7 @@ function formatTimeAgo(timestamp) {
   if (days > 0) {
     return `${days} dag${days > 1 ? 'ar' : ''} sedan`;
   } else if (hours > 0) {
-    return `${hours} timme${hours > 1 ? 'r' : ''} sedan`;
+    return `${hours} ${hours === 1 ? 'timme' : 'timmar'} sedan`;
   } else if (minutes > 0) {
     return `${minutes} minut${minutes > 1 ? 'er' : ''} sedan`;
   } else {
